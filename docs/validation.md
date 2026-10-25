@@ -40,11 +40,18 @@ revision v0.2) with ESP-IDF 6.0.2:
   running at 24 kHz; ESP-SR models loaded; CST820 touch answers (chip ID 0xB7); CO5300 initialised
   with the framebuffer in PSRAM and the DMA stripe in internal RAM; the first frame is queued and
   Bluetooth setup advertises. The board idled for more than two hours without a reset.
-- The setup card ("Hello / Open the Comma app / to set up / Comma-7838") is upright with the USB-C
+- The setup card ("Hello / Open the Comma app / to set up / Comma-XXXX") is upright with the USB-C
   port at the bottom, centred, not clipped, with no stray column strip at the edges (user photo).
 
-Still unverified on hardware: taps,
-Bluetooth setup with the passkey, the Connector, calls in both directions with the mic rate check,
-mic gain and speaker level, screen sleep, BOOT holds, and the gateway checks in the table above.
+- Bluetooth setup from a Mac with `firmware/tools/ble_provision.py` (no Android phone was
+  available): LE Secure Connections pairing with the on-screen passkey, Wi-Fi scan, Wi-Fi up, saved,
+  Connector up within 13 s against the production backend; Bluetooth then turned off. Allowing device
+  operations reached the board as a `device_access` request.
+- Gateway, once each through the backend: LAN discovery (ARP, mDNS, SSDP and the UDP probes) and an
+  HTTP GET to a host on the LAN.
+
+Still unverified on hardware: taps, calls in both directions with the mic rate check, mic gain and
+speaker level, screen sleep, BOOT holds, and the three-round gateway checks in the table above
+(text at the cap, 1 MiB chunks, UDP, tunnels).
 The ES7210's MIC3 echo reference is not used; the mic is gated during playback as on the other
 boards.

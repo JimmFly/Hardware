@@ -39,9 +39,11 @@ revision v0.2) with ESP-IDF 6.0.2:
 - Boot log after a full flash: 8 MB PSRAM found; ES8311 and ES7210 configured and the I2S port
   running at 24 kHz; ESP-SR models loaded; CST820 touch answers (chip ID 0xB7); CO5300 initialised
   with the framebuffer in PSRAM and the DMA stripe in internal RAM; the first frame is queued and
-  Bluetooth setup advertises. The board idled for more than ten minutes without a reset.
+  Bluetooth setup advertises. The board idled for more than two hours without a reset.
+- The setup card ("Hello / Open the Comma app / to set up / Comma-7838") is upright with the USB-C
+  port at the bottom, centred, not clipped, with no stray column strip at the edges (user photo).
 
-Still unverified on hardware: the picture itself (orientation and the 8-column offset), taps,
+Still unverified on hardware: taps,
 Bluetooth setup with the passkey, the Connector, calls in both directions with the mic rate check,
 mic gain and speaker level, screen sleep, BOOT holds, and the gateway checks in the table above.
 The ES7210's MIC3 echo reference is not used; the mic is gated during playback as on the other

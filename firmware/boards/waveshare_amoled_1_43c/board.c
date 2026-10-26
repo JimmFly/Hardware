@@ -101,5 +101,6 @@ void board_init(void)
 void board_run_ui(void *arg)
 {
     (void)arg;
-    call_run_ui("tap the screen or press BOOT to call, again to hang up; hold BOOT 3 s to pair, 10 s to reset");
+    call_run_ui("tap the screen or press BOOT to call, again to hang up; hold the screen 1 s for settings; "
+                "hold BOOT 3 s to pair, 10 s to reset");
 }

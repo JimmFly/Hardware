@@ -27,6 +27,7 @@ sh firmware/tools/resample_test/run.sh
 sh firmware/tools/mic_path_test/run.sh
 sh firmware/tools/device_config_test/run.sh
 sh firmware/tools/call_ui_test/run.sh
+sh firmware/tools/wifi_switch_test/run.sh
 # The DevKit's smaller limits:
 sh firmware/tools/lan_http_test/run.sh --devkit
 sh firmware/tools/lan_udp_test/run.sh --devkit
@@ -58,7 +59,7 @@ They do not replace board tests for Wi-Fi, Bluetooth or audio.
 | --- | --- |
 | `firmware/main/` | Shared gateway: Connector, LAN methods, Wi-Fi, Bluetooth setup, keys, Kconfig |
 | `firmware/voice/` | Shared voice call: voice session, playback, noise suppression and VAD |
-| `firmware/ui/` | Shared screen cards, fonts and logo for each screen size, and the panel transfer |
+| `firmware/ui/` | Shared screen cards, fonts and logo for each screen size, the panel transfer, and the on-screen settings (`settings.c`, `ui_view.c`) |
 | `firmware/boards/<board>/` | Pins and drivers for one board |
 | `firmware/boards/common/` | Drivers for parts that several boards use (CST816-family touch) |
 | `firmware/components/` | Vendored GC9D01 LCD driver (Espressif, Apache-2.0) |

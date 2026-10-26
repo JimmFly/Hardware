@@ -60,8 +60,15 @@ development tools only.
 | Wake the screen | Tap (also calls) | KEY2, short | Tap or BOOT | Tap or BOOT (also call) | — |
 | Pairing mode (hold 3–10 s) | BOOT | KEY2 | BOOT | BOOT | BOOT |
 | Factory reset (hold > 10 s) | BOOT | KEY2 | BOOT | BOOT | BOOT |
+| Settings on the screen | — | — | — | Hold the idle screen 1 s | — |
 
 The 1.43C has no speaker on board: plug one into its MX1.25 speaker connector for calls.
+
+The 1.43C's on-screen settings show the Wi-Fi network, its signal and whether Comma is online. They
+scan for networks and switch to another one with a password typed on the screen, keeping the Comma
+setup (no new pairing); a network that does not connect within 45 s is given up and the previous one
+rejoined. They also turn Wi-Fi off until it is turned on again or the board restarts, and start
+pairing mode, the only time Bluetooth runs. BOOT, short, goes back a page.
 
 ## Documentation
 

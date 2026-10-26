@@ -18,5 +18,11 @@
 - Changing the workspace, group, backend URLs, Connector token or voice key resets operation
   permission; allow operations again in the app. Changing only Wi-Fi or the device name preserves
   permission. With compiled-in development credentials, permission lasts only until reboot.
+- **On-screen settings (Waveshare 1.43C).** Like the BOOT hold, they need physical access. They can
+  switch the board to another Wi-Fi network or turn Wi-Fi off, and start pairing mode with its usual
+  passkey; they never show, change or export the Comma credentials, and a Wi-Fi-only change keeps
+  operation permission. The password typed on the screen is shown only on request, never logged, and
+  wiped from memory once the network is tried or the entry is cancelled; a network is stored only
+  after it has connected.
 - The Bluetooth advertising data uses the test company ID `0xFFFF`.
 - There is no OTA update; update by USB.

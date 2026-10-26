@@ -37,6 +37,7 @@ static atomic_int s_result = WIFI_RESULT_IDLE;
 // unreachable network would otherwise be retried forever.
 static atomic_bool s_hold;
 static atomic_bool s_scanning;
+static atomic_bool s_off;  // wifi_turn_off() until the next wifi_connect()
 static int s_attempts;
 static int s_auth_failures;
 static int s_not_found;
@@ -203,6 +204,7 @@ esp_err_t wifi_connect(const char *ssid, const char *password, bool keep_retryin
         return ESP_ERR_INVALID_SIZE;
     }
 
+    s_off = false;
     // Drop any current link first. Its disconnect event lands while the mode is NONE.
     if (s_mode != MODE_NONE || s_up) {
         wifi_disconnect();
@@ -335,6 +337,33 @@ void wifi_set_power_save(bool on)
 bool wifi_is_up(void)
 {
     return s_up;
+}
+
+bool wifi_link_info(char *ssid, size_t ssid_len, int8_t *rssi)
+{
+    wifi_ap_record_t ap;
+    if (!s_up || esp_wifi_sta_get_ap_info(&ap) != ESP_OK) {
+        return false;
+    }
+    if (ssid && ssid_len) {
+        strlcpy(ssid, (const char *)ap.ssid, ssid_len);
+    }
+    if (rssi) {
+        *rssi = ap.rssi;
+    }
+    return true;
+}
+
+void wifi_turn_off(void)
+{
+    wifi_disconnect();
+    s_off = true;
+    ESP_LOGI(TAG, "turned off");
+}
+
+bool wifi_is_off(void)
+{
+    return s_off;
 }
 
 unsigned wifi_ip_generation(void)

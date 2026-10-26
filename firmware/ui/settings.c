@@ -32,6 +32,8 @@
 // "Turn Wi-Fi off" needs a second tap within this time.
 #define CONFIRM_US (4LL * 1000000)
 #define HINT_US (3LL * 1000000)
+// A key that was hit lights up, with the character large above it, for this long.
+#define KEY_FLASH_US (350LL * 1000)
 #define LINK_REFRESH_US (2LL * 1000000)
 #define SCAN_MAX 16
 #define ROWS_PER_PAGE 4
@@ -70,7 +72,8 @@ typedef enum {
     HIT_CHOOSE,
     HIT_TOGGLE,
     HIT_NETWORK,  // arg: index into aps
-    HIT_MORE,
+    HIT_UP,
+    HIT_DOWN,
     HIT_RESCAN,
     HIT_KEY,      // arg: the character
     HIT_CASE,
@@ -109,13 +112,15 @@ typedef struct {
     // Scan results: written by the scan task while s_scan is SCAN_RUNNING, read once SCAN_DONE.
     wifi_ap_t aps[SCAN_MAX];
     size_t ap_count;
-    int ap_page;
+    int ap_first;  // first row of the list on screen
     // The network being joined and its password.
     char chosen[33];
     bool chosen_secure;
     char password[PASSWORD_MAX + 1];
     keyboard_t keyboard;
     bool show_password;
+    char flash_key;
+    int64_t flash_until;
 } settings_t;
 
 // Allocated on first open and kept: a scan task may still write into it after a close.
@@ -196,7 +201,7 @@ static void start_scan(void)
     if (s_scan == SCAN_RUNNING) {
         return;
     }
-    S->ap_page = 0;
+    S->ap_first = 0;
     s_scan = SCAN_RUNNING;
     if (xTaskCreate(scan_task, "wifi_scan", 4096, NULL, 3, NULL) != pdPASS) {
         ESP_LOGE(TAG, "scan task create failed");
@@ -341,10 +346,25 @@ static void type(char c)
     }
 }
 
-static int page_count(void)
+// The network list: the networks found, then a "Scan again" row. ROWS_PER_PAGE rows show at a time,
+// from ap_first; a swipe or Up/Down moves them by all but one row.
+#define SCROLL_ROWS (ROWS_PER_PAGE - 1)
+
+static int list_rows(void)
 {
-    const int pages = ((int)S->ap_count + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE;
-    return pages > 0 ? pages : 1;
+    return s_scan == SCAN_DONE ? (int)S->ap_count + 1 : 0;
+}
+
+static void scroll(int rows)
+{
+    const int last_first = list_rows() - ROWS_PER_PAGE;
+    S->ap_first += rows;
+    if (S->ap_first > last_first) {
+        S->ap_first = last_first;
+    }
+    if (S->ap_first < 0) {
+        S->ap_first = 0;
+    }
 }
 
 static void on_hit(const hit_t *hit, int64_t now)
@@ -377,14 +397,19 @@ static void on_hit(const hit_t *hit, int64_t now)
             choose(hit->arg, now);
         }
         break;
-    case HIT_MORE:
-        S->ap_page = (S->ap_page + 1) % page_count();
+    case HIT_UP:
+        scroll(-SCROLL_ROWS);
+        break;
+    case HIT_DOWN:
+        scroll(SCROLL_ROWS);
         break;
     case HIT_RESCAN:
         start_scan();
         break;
     case HIT_KEY:
         type((char)hit->arg);
+        S->flash_key = (char)hit->arg;
+        S->flash_until = now + KEY_FLASH_US;
         break;
     case HIT_SPACE:
         type(' ');
@@ -554,46 +579,64 @@ static void draw_wifi(int64_t now)
     button(153, 380, 160, 56, L_BUTTON, "Back", HIT_BACK, 0);
 }
 
+// Up or Down under the list: dimmed, and no target, at either end.
+static void nav_button(int x, int w, const char *text, bool enabled, hit_id_t id)
+{
+    if (enabled) {
+        button(x, 368, w, 56, L_BUTTON, text, id, 0);
+    } else {
+        add(x, 368, w, 56, L_BOX, L_DIM, UI_VIEW_FONT_MENU, UI_VIEW_CENTER, 28, text);
+    }
+}
+
 static void draw_networks(void)
 {
     char line[64];
     const scan_state_t scan = (scan_state_t)s_scan;
-    const int pages = page_count();
-    if (S->ap_page >= pages) {
-        S->ap_page = 0;
-    }
     label(36, 50, L_TITLE, UI_VIEW_FONT_SMALL, "Networks");
 
     if (scan == SCAN_RUNNING || scan == SCAN_IDLE) {
         label(196, 50, L_DIM, UI_VIEW_FONT_SMALL, "Scanning...");
-    } else if (scan == SCAN_FAILED) {
-        label(176, 50, L_TEXT, UI_VIEW_FONT_SMALL, "Scan failed");
-        label(228, 36, L_DIM, UI_VIEW_FONT_MENU, "Tap Rescan to try again");
-    } else if (S->ap_count == 0) {
-        label(176, 50, L_TEXT, UI_VIEW_FONT_SMALL, "No networks");
-        label(228, 36, L_DIM, UI_VIEW_FONT_MENU, "Only 2.4 GHz networks show");
+    } else if (scan == SCAN_FAILED || S->ap_count == 0) {
+        label(150, 50, L_TEXT, UI_VIEW_FONT_SMALL, scan == SCAN_FAILED ? "Scan failed" : "No networks");
+        label(202, 36, L_DIM, UI_VIEW_FONT_MENU, "Only 2.4 GHz networks show");
+        button(73, 256, 320, 60, L_BUTTON, "Scan again", HIT_RESCAN, 0);
     } else {
+        scroll(0);  // the list may have shrunk since the last scan
+        const int rows = list_rows();
         for (int k = 0; k < ROWS_PER_PAGE; ++k) {
-            const size_t i = (size_t)(S->ap_page * ROWS_PER_PAGE + k);
-            if (i >= S->ap_count) {
+            const int i = S->ap_first + k;
+            const int y = 96 + k * 66;
+            if (i >= rows) {
                 break;
             }
+            if (i == (int)S->ap_count) {
+                button(58, y, 350, 58, L_BUTTON, "Scan again", HIT_RESCAN, 0);
+                continue;
+            }
             const wifi_ap_t *ap = &S->aps[i];
-            const int y = 96 + k * 66;
             const bool current = S->link_up && strcmp(ap->ssid, S->link_ssid) == 0;
             add(58, y, 350, 58, current ? L_STRONG : L_BOX, 0, 0, 0, 29, NULL);
-            add(58, y, 240, 58, 0, L_TEXT, UI_VIEW_FONT_MENU, UI_VIEW_LEFT, 0, ap->ssid);
-            snprintf(line, sizeof(line), ap->secure ? "%d" : "open %d", ap->rssi);
-            add(288, y, 120, 58, 0, L_DIM, UI_VIEW_FONT_MENU, UI_VIEW_RIGHT, 0, line);
+            // Name (226 px; an open network says so) and signal (66 px) side by side.
+            snprintf(line, sizeof(line), ap->secure ? "%s" : "%s (open)", ap->ssid);
+            add(58, y, 250, 58, 0, L_TEXT, UI_VIEW_FONT_MENU, UI_VIEW_LEFT, 0, line);
+            snprintf(line, sizeof(line), "%d", ap->rssi);
+            add(318, y, 90, 58, 0, L_DIM, UI_VIEW_FONT_MENU, UI_VIEW_RIGHT, 0, line);
             target(58, y, 350, 58, HIT_NETWORK, (uint8_t)i);
         }
+        if (rows > ROWS_PER_PAGE) {
+            // Scroll bar beside the rows: where the visible rows are in the whole list.
+            const int track_y = 100, track_h = ROWS_PER_PAGE * 66 - 16;
+            const int thumb_h = track_h * ROWS_PER_PAGE / rows;
+            const int thumb_y = track_y + (track_h - thumb_h) * S->ap_first / (rows - ROWS_PER_PAGE);
+            add(414, track_y, 6, track_h, L_BOX, 0, 0, 0, 3, NULL);
+            add(414, thumb_y, 6, thumb_h, L_DIM, 0, 0, 0, 3, NULL);
+        }
     }
-    button(96, 368, 130, 56, L_BUTTON, "Back", HIT_BACK, 0);
-    if (scan == SCAN_DONE && S->ap_page + 1 < pages) {
-        button(240, 368, 130, 56, L_BUTTON, "More", HIT_MORE, 0);
-    } else {
-        button(240, 368, 130, 56, L_BUTTON, "Rescan", HIT_RESCAN, 0);
-    }
+    const bool listed = scan == SCAN_DONE && S->ap_count > 0;
+    nav_button(96, 84, "Up", listed && S->ap_first > 0, HIT_UP);
+    button(186, 368, 94, 56, L_BUTTON, "Back", HIT_BACK, 0);
+    nav_button(286, 84, "Down", listed && S->ap_first + ROWS_PER_PAGE < list_rows(), HIT_DOWN);
 }
 
 // What the password field shows: the end of what was typed when it is too long to fit.
@@ -631,6 +674,8 @@ static void draw_password(int64_t now)
     add(83, 46, 300, 58, L_BOX, level, UI_VIEW_FONT_MENU, UI_VIEW_CENTER, 29, field);
     wipe(field, sizeof(field));
 
+    const bool flashing = now < S->flash_until;
+    int flash_x = -1, flash_y = 0;
     for (int r = 0; r < 4; ++r) {
         const char *row = KEY_ROWS[S->keyboard][r];
         const int n = (int)strlen(row);
@@ -638,8 +683,13 @@ static void draw_password(int64_t now)
         const int y = 112 + r * 50;
         for (int c = 0; c < n; ++c) {
             const char key[2] = {row[c], '\0'};
-            add(x0 + c * 40, y, 38, 46, L_BUTTON, L_TEXT, UI_VIEW_FONT_MENU, UI_VIEW_CENTER, 10, key);
+            const bool lit = flashing && row[c] == S->flash_key;
+            add(x0 + c * 40, y, 38, 46, lit ? L_STRONG : L_BUTTON, L_TEXT, UI_VIEW_FONT_MENU, UI_VIEW_CENTER, 10, key);
             target(x0 + c * 40, y, 38, 46, HIT_KEY, (uint8_t)row[c]);
+            if (lit) {
+                flash_x = x0 + c * 40;
+                flash_y = y;
+            }
         }
     }
     // Shift, symbols, space, show and delete: 374 px, inside the glass at this row.
@@ -650,6 +700,17 @@ static void draw_password(int64_t now)
     button(360, 316, 60, 48, L_BUTTON, "Del", HIT_DELETE, 0);
     button(108, 372, 120, 50, L_BUTTON, "Cancel", HIT_CANCEL, 0);
     button(238, 372, 120, 50, L_STRONG, "Join", HIT_JOIN, 0);
+    if (flash_x >= 0) {
+        // The key just hit, enlarged above it (drawn last, over its neighbours), as phones do.
+        // Kept inside the glass: near the top the rows are narrow.
+        const int by = flash_y - 60;
+        const int margin = (UI_CARD_W - (chord(by, 58) + 24)) / 2;
+        int bx = flash_x - 13;
+        if (bx < margin) bx = margin;
+        if (bx > UI_CARD_W - margin - 64) bx = UI_CARD_W - margin - 64;
+        const char key[2] = {S->flash_key, '\0'};
+        add(bx, by, 64, 58, L_STRONG, L_TEXT, UI_VIEW_FONT_SMALL, UI_VIEW_CENTER, 16, key);
+    }
 }
 
 static void draw_joining(void)
@@ -741,11 +802,17 @@ void settings_poll(int64_t now, board_input_event_t event, bool back_key, bool p
         return;
     }
     const bool tap = event == BOARD_INPUT_TAP || event == BOARD_INPUT_PRESS;
-    if (tap || back_key) {
+    const bool swipe = event == BOARD_INPUT_SWIPE_UP || event == BOARD_INPUT_SWIPE_DOWN;
+    if (tap || swipe || back_key) {
         S->touched_us = now;
     }
     if (back_key) {
         back();
+    } else if (swipe) {
+        // The finger moving up brings up the rows below.
+        if (S->page == PAGE_NETWORKS) {
+            scroll(event == BOARD_INPUT_SWIPE_UP ? SCROLL_ROWS : -SCROLL_ROWS);
+        }
     } else if (tap) {
         int x = 0, y = 0;
         if (board_input_point(&x, &y)) {

@@ -23,6 +23,9 @@
   passkey; they never show, change or export the Comma credentials, and a Wi-Fi-only change keeps
   operation permission. The password typed on the screen is shown only on request, never logged, and
   wiped from memory once the network is tried or the entry is cancelled; a network is stored only
-  after it has connected.
+  after it has connected. The same switch is offered on the USB Serial/JTAG port only
+  (`tools/serial_wifi.py`), never over the network; USB access already exposes the stored
+  credentials. Its password is sent hex-encoded, is not echoed and is never logged; `comma wifi
+  status` prints a 4-byte SHA-256 fingerprint of the non-Wi-Fi config to show it did not change.
 - The Bluetooth advertising data uses the test company ID `0xFFFF`.
 - There is no OTA update; update by USB.

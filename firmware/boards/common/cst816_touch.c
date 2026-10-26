@@ -20,6 +20,8 @@
 // With points: held this long without moving more than PRESS_SLOP_PX is a long press.
 #define LONG_PRESS_US (1000 * 1000)
 #define PRESS_SLOP_PX 24
+// With points: a release this far from where the finger went down, mostly vertically, is a swipe.
+#define SWIPE_MIN_PX 40
 
 static const char *TAG = "touch";
 
@@ -192,6 +194,14 @@ board_input_event_t board_input_poll(void)
     if (released && s_tap_armed) {
         s_tap_armed = false;
         const int64_t held = now - s_down_us;
+        if (s_config.points && s_moved) {
+            // A drag, however quick, is not a tap: it would land on whatever is under the finger.
+            const int dx = s_x - s_down_x, dy = s_y - s_down_y;
+            if (abs(dy) >= SWIPE_MIN_PX && abs(dy) > abs(dx)) {
+                return dy < 0 ? BOARD_INPUT_SWIPE_UP : BOARD_INPUT_SWIPE_DOWN;
+            }
+            return BOARD_INPUT_NONE;
+        }
         if (held <= TAP_MAX_US) {
             return BOARD_INPUT_TAP;
         }

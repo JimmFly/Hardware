@@ -52,7 +52,7 @@ elseif(comma_board STREQUAL "m5stack-sticks3")
          esp_driver_tsens sticks3_deps)
 elseif(comma_board STREQUAL "waveshare-amoled-1-43c")
     list(APPEND reqs esp_driver_i2s esp_driver_i2c esp-sr esp_lcd esp_driver_spi esp_driver_tsens
-         waveshare_1_43c_deps)
+         esp_driver_usb_serial_jtag waveshare_1_43c_deps)
 elseif(IDF_TARGET STREQUAL "esp32s3")
     list(APPEND reqs esp_driver_i2s esp_driver_i2c esp-sr esp_lcd esp_lcd_gc9d01
          esp_driver_spi esp_driver_tsens)
@@ -74,6 +74,9 @@ if(CONFIG_COMMA_HAS_DISPLAY)
     set(assets "../ui/${ui_size}/comma_logo.bin")
     if(CONFIG_COMMA_SETTINGS_UI)
         list(APPEND srcs "wifi_switch.c" "../ui/settings.c" "../ui/ui_view.c" "../ui/${ui_size}/ui_font_menu.c")
+    endif()
+    if(CONFIG_COMMA_SERIAL_WIFI)
+        list(APPEND srcs "serial_console.c")
     endif()
 endif()
 idf_component_register(SRCS ${srcs} INCLUDE_DIRS "." "${board_dir}" "../boards/common" "../voice" "../ui"

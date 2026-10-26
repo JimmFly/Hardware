@@ -160,7 +160,8 @@ static void draw_label(uint16_t *fb, const uint16_t *lut, const ui_view_item_t *
     const ui_font_t *font = font_of(it->font);
     char text[UI_VIEW_TEXT];
     ascii_fold(it->text, text, sizeof(text));
-    const int room = it->w - 2 * (it->align == UI_VIEW_CENTER ? CENTER_PAD : TEXT_PAD);
+    // A centred label keeps a small margin each side; an aligned one its padding on that side.
+    const int room = it->w - (it->align == UI_VIEW_CENTER ? 2 * CENTER_PAD : TEXT_PAD + CENTER_PAD);
     fit(font, text, room > 0 ? room : 0);
     const int w = width_of(font, text, strlen(text));
     int x = it->x + (it->w - w) / 2;

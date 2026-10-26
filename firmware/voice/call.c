@@ -15,6 +15,9 @@
 #if CONFIG_COMMA_SETTINGS_UI
 #include "settings.h"
 #include "wifi_switch.h"
+#if CONFIG_COMMA_SERIAL_WIFI
+#include "serial_console.h"
+#endif
 #define SETTINGS_OPEN() settings_active()
 #else
 #define SETTINGS_OPEN() false
@@ -196,6 +199,9 @@ void call_run_ui(const char *help)
 {
     ESP_LOGI(TAG, "%s", help);
     app_controls_init(board_input_boot_held());
+#if CONFIG_COMMA_SERIAL_WIFI
+    serial_console_start();
+#endif
     int64_t notice_until = 0;
     bool prov_was_active = provisioning_active();
     call_screen_t call_screen = {0};
@@ -240,6 +246,9 @@ void call_run_ui(const char *help)
         // take the touch input and the short BOOT press (Back), so nothing dials, including the tap
         // or press that closes them. A call or pairing mode closes them.
         wifi_switch_poll();
+#if CONFIG_COMMA_SERIAL_WIFI
+        serial_console_poll();
+#endif
         const bool settings_were_open = settings_active();
         if (settings_were_open && (in_call || ending || prov)) {
             settings_close();

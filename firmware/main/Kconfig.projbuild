@@ -74,6 +74,14 @@ config COMMA_SETTINGS_UI
         Wi-Fi status, scanning and switching to another network with an on-screen keyboard while
         keeping the Comma credentials, Wi-Fi off and on, and Bluetooth pairing mode. Needs a touch
         controller that reports positions (cst816_touch points) and the 466 px round screen.
+config COMMA_SERIAL_WIFI
+    bool "Wi-Fi switch from a computer over USB serial"
+    depends on COMMA_SETTINGS_UI && ESP_CONSOLE_USB_SERIAL_JTAG_ENABLED
+    default y
+    help
+        "comma wifi join" and "comma wifi status" lines on the USB Serial/JTAG port
+        (main/serial_console.h, tools/serial_wifi.py) run the same switch as the on-screen settings.
+        USB only, never the network.
 config COMMA_PAIRING_PASSKEY
     bool "Pair with display passkey and MITM protection"
     default y if COMMA_BOARD_T_CIRCLE_S3 || COMMA_BOARD_WAVESHARE_AMOLED_1_32 || COMMA_BOARD_M5STACK_STICKS3 || \

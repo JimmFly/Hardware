@@ -41,6 +41,11 @@ They do not replace board tests for Wi-Fi, Bluetooth or audio.
 - `firmware/tools/ble_provision.py`: set up a board over Bluetooth from a computer, as the app does
   (`scan`, `info`, `wifi-scan`, `provision`). Its `--server` and `--connect-url` default to the
   production backend; pass both to use another one. Secrets come from environment variables.
+- `firmware/tools/serial_wifi.py`: switch a Waveshare 1.43C to another Wi-Fi network over USB, keeping
+  its Comma setup (`join NETWORK`, password on stdin; `status`). On macOS the password can come straight
+  from the keychain: `security find-generic-password -D "AirPort network password" -a NETWORK -w |
+  python firmware/tools/serial_wifi.py --port /dev/cu.usbmodem101 join NETWORK`. Close any serial
+  monitor first.
 - `firmware/tools/fake_connector.py`: a local Connector server for testing a board without the
   backend. Build with `-DCOMMA_CONNECT_URL_OVERRIDE=ws://<your-computer>:8765/v1/connect` in a
   separate build directory (see [devices/README.md](../devices/README.md)).

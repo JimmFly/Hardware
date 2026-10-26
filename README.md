@@ -68,7 +68,8 @@ The 1.43C's on-screen settings show the Wi-Fi network, its signal and whether Co
 scan for networks and switch to another one with a password typed on the screen, keeping the Comma
 setup (no new pairing); a network that does not connect within 45 s is given up and the previous one
 rejoined. They also turn Wi-Fi off until it is turned on again or the board restarts, and start
-pairing mode, the only time Bluetooth runs. BOOT, short, goes back a page.
+pairing mode, the only time Bluetooth runs. BOOT, short, goes back a page. The same switch runs from
+a computer over USB with `firmware/tools/serial_wifi.py` (see [Development](docs/development.md)).
 
 ## Documentation
 

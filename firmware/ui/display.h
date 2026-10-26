@@ -20,6 +20,10 @@ void display_show_logo(void);
 // A tap or BOOT press: wake the screen and restart the idle timer.
 void display_wake(void);
 
+// Wake the screen and draw what it shows again, though it has not changed: the screen mirror's
+// first frame (CONFIG_COMMA_SCREEN_MIRROR).
+void display_redraw(void);
+
 // While set, the screen stays on (a call, pairing mode with its passkey, a notice).
 void display_keep_awake(bool on);
 

@@ -15,12 +15,17 @@
 #include "speaker_volume.h"
 #include "wifi.h"
 #include "wifi_switch.h"
+#if CONFIG_COMMA_SCREEN_MIRROR
+#include "board_input.h"
+#include "screen_mirror.h"
+#endif
 
 #include "driver/usb_serial_jtag.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "psa/crypto.h"
+#include "sdkconfig.h"
 
 #define LINE_MAX_BYTES 320  // "comma wifi join" + 2 x 32 hex SSID bytes + 2 x 64 hex password bytes
 
@@ -68,11 +73,43 @@ static bool unhex(const char *hex, size_t hex_len, char *out, size_t out_size)
     return true;
 }
 
+#if CONFIG_COMMA_SCREEN_MIRROR
+// "comma screen on|off|refresh", "comma touch tap|long X Y", "comma touch swipe up|down".
+static bool handle_mirror(const char *line)
+{
+    int x = 0, y = 0;
+    char what[8] = "";
+    if (strcmp(line, "comma screen on") == 0) {
+        screen_mirror_request(true);
+    } else if (strcmp(line, "comma screen off") == 0) {
+        screen_mirror_request(false);
+    } else if (strcmp(line, "comma screen refresh") == 0) {
+        screen_mirror_refresh();
+    } else if (sscanf(line, "comma touch tap %d %d", &x, &y) == 2) {
+        board_input_inject(BOARD_INPUT_TAP, x, y);
+    } else if (sscanf(line, "comma touch long %d %d", &x, &y) == 2) {
+        board_input_inject(BOARD_INPUT_LONG_PRESS, x, y);
+    } else if (sscanf(line, "comma touch swipe %7s", what) == 1 && strcmp(what, "up") == 0) {
+        board_input_inject(BOARD_INPUT_SWIPE_UP, 0, 0);
+    } else if (strcmp(what, "down") == 0) {
+        board_input_inject(BOARD_INPUT_SWIPE_DOWN, 0, 0);
+    } else {
+        return false;
+    }
+    return true;
+}
+#endif
+
 static void handle_line(char *line)
 {
     static const char JOIN[] = "comma wifi join ";
     static const char STATUS[] = "comma wifi status";
     static const char VOLUME[] = "comma volume";
+#if CONFIG_COMMA_SCREEN_MIRROR
+    if (handle_mirror(line)) {
+        return;
+    }
+#endif
     if (strcmp(line, STATUS) == 0) {
         if (s_request == REQ_NONE) s_request = REQ_STATUS;
         return;
@@ -151,7 +188,8 @@ static void reader_task(void *arg)
 
 void serial_console_start(void)
 {
-    usb_serial_jtag_driver_config_t cfg = {.rx_buffer_size = 512, .tx_buffer_size = 256};
+    // The screen mirror writes through the driver too: room for a few of its lines.
+    usb_serial_jtag_driver_config_t cfg = {.rx_buffer_size = 512, .tx_buffer_size = 4096};
     esp_err_t err = usb_serial_jtag_driver_install(&cfg);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "USB serial driver: %s", esp_err_to_name(err));

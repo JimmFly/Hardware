@@ -48,6 +48,11 @@ They do not replace board tests for Wi-Fi, Bluetooth or audio.
   from the keychain: `security find-generic-password -D "AirPort network password" -a NETWORK -w |
   python firmware/tools/serial_wifi.py --port /dev/cu.usbmodem101 join NETWORK`. `volume` shows the
   speaker level and `volume 1`-`volume 10` sets it, also during a call. Close any serial monitor first.
+- `firmware/tools/screen_mirror.py --port /dev/cu.usbmodem101`: the Waveshare 1.43C's screen in a
+  browser page on this computer, over USB. A click is a tap, holding the button 1 s a long press (on
+  the idle screen it opens the settings), and the wheel or a vertical drag a swipe. `--save FILE`
+  writes each frame as a PNG. The board mirrors only while the tool runs; close other serial
+  monitors first.
 - `firmware/tools/fake_connector.py`: a local Connector server for testing a board without the
   backend. Build with `-DCOMMA_CONNECT_URL_OVERRIDE=ws://<your-computer>:8765/v1/connect` in a
   separate build directory (see [devices/README.md](../devices/README.md)).

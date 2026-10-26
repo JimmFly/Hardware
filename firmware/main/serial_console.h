@@ -6,6 +6,8 @@
 //
 //   comma wifi join <ssid hex> [<password hex>]   switch as the on-screen settings do (wifi_switch.h)
 //   comma wifi status                             network, signal, Comma state, credential fingerprint
+//   comma screen on|off|refresh                   screen mirror (CONFIG_COMMA_SCREEN_MIRROR)
+//   comma touch tap|long X Y, comma touch swipe up|down   the mirror's clicks, as touch input
 //
 // Hex keeps any SSID or password on one line. Commands are not echoed, and the password is never
 // logged; it is wiped once handed to wifi_switch. tools/serial_wifi.py sends them. Anyone with the

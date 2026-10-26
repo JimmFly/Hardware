@@ -39,6 +39,9 @@ static int64_t s_down_us = 0;
 
 // With points only.
 static int s_x, s_y, s_down_x, s_down_y;
+// An event from board_input_inject(), reported by the next poll.
+static atomic_int s_injected = BOARD_INPUT_NONE;
+static atomic_int s_injected_x, s_injected_y;
 static bool s_long_armed = false;
 static bool s_moved = false;
 
@@ -164,6 +167,16 @@ board_input_event_t board_input_poll(void)
         s_boot_held = boot_raw;
     }
 
+    const int injected = atomic_exchange(&s_injected, BOARD_INPUT_NONE);
+    if (injected != BOARD_INPUT_NONE) {
+        // A finger on the glass at the same moment is dropped rather than merged with it.
+        s_x = s_injected_x;
+        s_y = s_injected_y;
+        s_tap_armed = false;
+        s_long_armed = false;
+        return (board_input_event_t)injected;
+    }
+
     bool screen = s_screen_raw;
     if (!read_screen(&screen)) {
         return BOARD_INPUT_NONE;
@@ -215,6 +228,16 @@ board_input_event_t board_input_poll(void)
 bool board_input_boot_held(void)
 {
     return s_boot_held;
+}
+
+void board_input_inject(board_input_event_t event, int x, int y)
+{
+    if (!s_config.points) {
+        return;
+    }
+    s_injected_x = x < 0 ? 0 : x >= s_config.width ? s_config.width - 1 : x;
+    s_injected_y = y < 0 ? 0 : y >= s_config.height ? s_config.height - 1 : y;
+    s_injected = event;
 }
 
 bool board_input_point(int *x, int *y)

@@ -30,3 +30,8 @@ bool board_input_boot_held(void);
 // Where the finger was at its last sample on the screen, in screen pixels, for the event just
 // reported. False on a board that does not report positions.
 bool board_input_point(int *x, int *y);
+
+// Report event at (x, y) on the next poll as if a finger had made it: clicks in the screen mirror
+// (CONFIG_COMMA_SCREEN_MIRROR). Safe from any task. Ignored on a board that does not report
+// positions.
+void board_input_inject(board_input_event_t event, int x, int y);

@@ -27,5 +27,8 @@
   (`tools/serial_wifi.py`), never over the network; USB access already exposes the stored
   credentials. Its password is sent hex-encoded, is not echoed and is never logged; `comma wifi
   status` prints a 4-byte SHA-256 fingerprint of the non-Wi-Fi config to show it did not change.
+  The screen mirror (`tools/screen_mirror.py`) uses the same port: it shows the screen, including
+  a password while "Show" is on, and its clicks act as touches, so it gives the computer the same
+  control as a finger on the glass. It runs only while the computer keeps asking for it.
 - The Bluetooth advertising data uses the test company ID `0xFFFF`.
 - There is no OTA update; update by USB.

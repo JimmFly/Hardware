@@ -74,6 +74,8 @@ the work without clipping; 9 and 10 add +3 and +6 dB in front of the speaker lim
 the loudest peaks compressed. BOOT, short, goes back a page. The same Wi-Fi switch and the volume
 run from a computer over USB with `firmware/tools/serial_wifi.py` (see
 [Development](docs/development.md)).
+`firmware/tools/screen_mirror.py` shows the 1.43C's screen in a browser on the computer it is plugged
+into and turns mouse clicks into taps, long presses and swipes.
 
 ## Documentation
 

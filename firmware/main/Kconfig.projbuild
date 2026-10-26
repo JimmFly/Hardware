@@ -82,6 +82,13 @@ config COMMA_SERIAL_WIFI
         "comma wifi join" and "comma wifi status" lines on the USB Serial/JTAG port
         (main/serial_console.h, tools/serial_wifi.py) run the same switch as the on-screen settings.
         USB only, never the network.
+config COMMA_SCREEN_MIRROR
+    bool "Screen mirror and remote touch over USB serial"
+    depends on COMMA_SERIAL_WIFI && COMMA_HAS_DISPLAY
+    default y
+    help
+        tools/screen_mirror.py shows the screen on a computer and turns its clicks into taps, long
+        presses and swipes. Off until the computer asks over USB; nothing is allocated before that.
 config COMMA_PAIRING_PASSKEY
     bool "Pair with display passkey and MITM protection"
     default y if COMMA_BOARD_T_CIRCLE_S3 || COMMA_BOARD_WAVESHARE_AMOLED_1_32 || COMMA_BOARD_M5STACK_STICKS3 || \

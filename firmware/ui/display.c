@@ -22,6 +22,9 @@
 #include "esp_heap_caps.h"
 #include "ui_view.h"
 #endif
+#if CONFIG_COMMA_SCREEN_MIRROR
+#include "screen_mirror.h"
+#endif
 
 #define DISPLAY_SLEEP_US (15LL * 1000000)
 #define POLL_MS 20
@@ -158,6 +161,12 @@ void display_wake(void)
     s_wake_req = true;
 }
 
+void display_redraw(void)
+{
+    s_dirty = true;
+    display_wake();
+}
+
 void display_keep_awake(bool on)
 {
     if (on && !s_keep_awake) {
@@ -196,11 +205,17 @@ static bool draw(bool card_on, const ui_card_t *card)
         ESP_LOGE(TAG, "frame not sent: %s", esp_err_to_name(err));
         return false;
     }
+#if CONFIG_COMMA_SCREEN_MIRROR
+    screen_mirror_capture(fb);
+#endif
     return true;
 }
 
 static void panel_sleep(void)
 {
+#if CONFIG_COMMA_SCREEN_MIRROR
+    screen_mirror_sleep();
+#endif
     board_display_sleep();
     s_asleep = true;
     ESP_LOGI(TAG, "screen off");

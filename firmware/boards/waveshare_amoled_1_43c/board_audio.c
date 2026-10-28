@@ -48,6 +48,8 @@
 #include "mic_path.h"
 
 #include <limits.h>
+#include <math.h>
+#include <stdatomic.h>
 #include <stddef.h>
 
 #include "driver/i2s_std.h"
@@ -61,6 +63,9 @@
 #include "freertos/stream_buffer.h"
 #include "freertos/task.h"
 #include "memory_caps.h"
+#include "nvs.h"
+#include "speaker_volume.h"
+#include "voice_state.h"
 
 #define WS_I2S_RATE_HZ AUDIO_SAMPLE_RATE_HZ
 #define WS_CHANNELS 2
@@ -71,9 +76,18 @@
 // ES7210 mic PGA. Waveshare's example uses 30-35 dB; start at its lower value and tune against the
 // T-Circle's mic_rms (~400 speaking at arm's length).
 #define WS_MIC_GAIN_DB 30.0f
-// ES8311 DAC volume on esp_codec_dev's dB scale (after the hardware gain below). The speaker is
-// whatever the user plugs into the MX1.25 header: start 3 dB quieter than the StickS3.
-#define WS_SPEAKER_DB -6.0f
+// The speaker volume is a level 1-10 (speaker_volume.h), stored in NVS and set on the on-screen
+// Volume page or with "comma volume" on the USB console. esp_codec_dev's set_vol() takes dB before
+// the hardware gain below (3.3 V DAC into a 5 V amp, 20 log10(3.3 / 5) = -3.6 dB) and subtracts
+// it, so a DAC register value of X dB is set as X + WS_HW_GAIN_DB.
+#define WS_HW_GAIN_DB (-3.6f)
+#define VOLUME_NS "speaker"
+#define VOLUME_KEY "volume"
+// The preview beep: 880 Hz for 150 ms at -6 dBFS, with 10 ms ramps.
+#define BEEP_HZ 880
+#define BEEP_MS 150
+#define BEEP_RAMP_MS 10
+#define BEEP_AMPLITUDE 16384
 // The mic rate check: one log line this long after the mic opens.
 #define WS_RATE_CHECK_US (10LL * 1000000)
 // Mic audio the reader task can hold for a late voice task (the T-Circle's DMA holds 160 ms).
@@ -98,6 +112,8 @@ static const audio_codec_if_t *s_codec = NULL;  // ES8311, speaker
 static const audio_codec_if_t *s_adc = NULL;    // ES7210, mics
 static bool s_recording = false;
 static bool s_speaker_enabled = false;
+static atomic_int s_volume = SPEAKER_VOLUME_DEFAULT;
+static atomic_int s_boost_q8 = SPEAKER_BOOST_UNITY_Q8;  // read per sample by the playing task
 static int16_t s_out[WS_AUDIO_CHUNK_FRAMES * WS_CHANNELS];
 static StreamBufferHandle_t s_ring;  // mono PCM16 at MIC_SAMPLE_RATE_HZ
 static TaskHandle_t s_mic_rx_task;
@@ -202,6 +218,34 @@ static void pa_set(bool on)
     gpio_set_level(WS_PA, on ? 1 : 0);
 }
 
+static int load_volume(void)
+{
+    int level = SPEAKER_VOLUME_DEFAULT;
+    nvs_handle_t h;
+    if (nvs_open(VOLUME_NS, NVS_READONLY, &h) == ESP_OK) {
+        uint8_t stored = 0;
+        if (nvs_get_u8(h, VOLUME_KEY, &stored) == ESP_OK) {
+            level = speaker_volume_clamp(stored);
+        }
+        nvs_close(h);
+    }
+    return level;
+}
+
+// Sets the codec and the boost for a level. Safe while audio plays: the DAC volume is one register.
+static esp_err_t apply_volume(int level)
+{
+    level = speaker_volume_clamp(level);
+    const speaker_volume_t gain = speaker_volume_gain(level);
+    if (s_codec->set_vol(s_codec, (float)gain.dac_db + WS_HW_GAIN_DB) != ESP_CODEC_DEV_OK) {
+        return ESP_FAIL;
+    }
+    s_boost_q8 = gain.boost_q8;
+    s_volume = level;
+    ESP_LOGI(TAG, "speaker volume %d: DAC %d dB, boost +%d dB", level, gain.dac_db, gain.boost_db);
+    return ESP_OK;
+}
+
 static esp_err_t codec_init(void)
 {
     ESP_RETURN_ON_FALSE(ws_i2c_bus(), ESP_ERR_INVALID_STATE, TAG, "no I2C bus");
@@ -245,7 +289,7 @@ static esp_err_t codec_init(void)
     };
     ESP_RETURN_ON_FALSE(s_codec->set_fs(s_codec, &fs) == ESP_CODEC_DEV_OK, ESP_FAIL, TAG, "ES8311 rate");
     ESP_RETURN_ON_FALSE(s_codec->enable(s_codec, true) == ESP_CODEC_DEV_OK, ESP_FAIL, TAG, "ES8311 enable");
-    ESP_RETURN_ON_FALSE(s_codec->set_vol(s_codec, WS_SPEAKER_DB) == ESP_CODEC_DEV_OK, ESP_FAIL, TAG, "volume");
+    ESP_RETURN_ON_ERROR(apply_volume(load_volume()), TAG, "volume");
     ESP_RETURN_ON_FALSE(s_codec->mute(s_codec, true) == ESP_CODEC_DEV_OK, ESP_FAIL, TAG, "mute DAC");
 
     // ES7210: clock slave on the same port. MIC1 and MIC2 only, so it stays in standard I2S mode
@@ -320,8 +364,8 @@ esp_err_t board_audio_init(void)
                         ESP_ERR_NO_MEM, TAG, "mic reader task");
     ESP_LOGI(TAG,
              "AMOLED 1.43C audio ready: ES8311 out, ES7210 in, duplex stereo I2S0 at %d Hz, mic slot %d to %d Hz, "
-             "mic gain %.0f dB, speaker %.1f dB",
-             WS_I2S_RATE_HZ, WS_MIC_SLOT, MIC_SAMPLE_RATE_HZ, (double)WS_MIC_GAIN_DB, (double)WS_SPEAKER_DB);
+             "mic gain %.0f dB, speaker volume %d",
+             WS_I2S_RATE_HZ, WS_MIC_SLOT, MIC_SAMPLE_RATE_HZ, (double)WS_MIC_GAIN_DB, (int)s_volume);
     return ESP_OK;
 }
 
@@ -471,6 +515,7 @@ esp_err_t board_audio_play_pcm16_mono(const int16_t *pcm, int samples)
         if (frames > WS_AUDIO_CHUNK_FRAMES) {
             frames = WS_AUDIO_CHUNK_FRAMES;
         }
+        const int16_t boost_q8 = (int16_t)s_boost_q8;
         for (int i = 0; i < frames; ++i) {
             const int32_t input = pcm[offset + i];
             const int32_t highpass = input - s_speaker_previous_input +
@@ -482,6 +527,8 @@ esp_err_t board_audio_play_pcm16_mono(const int16_t *pcm, int samples)
                 shaped = shaped * (int32_t)s_speaker_fade_samples / WS_SPEAKER_FADE_IN_SAMPLES;
                 ++s_speaker_fade_samples;
             }
+            // Levels above the clean maximum push the signal into the limiter (speaker_volume.h).
+            shaped = speaker_volume_boost(shaped, boost_q8);
             // The same sample in both slots, as the reference writes it.
             s_out[2 * i] = s_out[2 * i + 1] = soft_limit_pcm16(shaped, WS_LIMIT_START);
         }
@@ -494,4 +541,61 @@ esp_err_t board_audio_play_pcm16_mono(const int16_t *pcm, int samples)
         offset += frames;
     }
     return ESP_OK;
+}
+
+int board_audio_volume(void)
+{
+    return s_volume;
+}
+
+esp_err_t board_audio_set_volume(int level)
+{
+    if (!s_codec) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    level = speaker_volume_clamp(level);
+    ESP_RETURN_ON_ERROR(apply_volume(level), TAG, "set volume");
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(VOLUME_NS, NVS_READWRITE, &h);
+    if (err == ESP_OK) {
+        err = nvs_set_u8(h, VOLUME_KEY, (uint8_t)level);
+        if (err == ESP_OK) {
+            err = nvs_commit(h);
+        }
+        nvs_close(h);
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "volume not stored: %s", esp_err_to_name(err));
+    }
+    return err;
+}
+
+esp_err_t board_audio_preview_volume(void)
+{
+    if (!s_codec || comma_voice_active()) {
+        return ESP_ERR_INVALID_STATE;  // a call owns the speaker; the new level is heard in it
+    }
+    enum { CHUNK = 240, TOTAL = AUDIO_SAMPLE_RATE_HZ * BEEP_MS / 1000, RAMP = AUDIO_SAMPLE_RATE_HZ * BEEP_RAMP_MS / 1000 };
+    int16_t chunk[CHUNK];
+    esp_err_t err = ESP_OK;
+    for (int at = 0; at < TOTAL && err == ESP_OK; at += CHUNK) {
+        const int n = TOTAL - at < CHUNK ? TOTAL - at : CHUNK;
+        for (int i = 0; i < n; ++i) {
+            const int k = at + i;
+            int32_t amplitude = BEEP_AMPLITUDE;
+            if (k < RAMP) {
+                amplitude = amplitude * k / RAMP;
+            } else if (TOTAL - k < RAMP) {
+                amplitude = amplitude * (TOTAL - k) / RAMP;
+            }
+            chunk[i] = (int16_t)(amplitude * sinf(2.0f * (float)M_PI * BEEP_HZ * (float)k / AUDIO_SAMPLE_RATE_HZ));
+        }
+        err = board_audio_play_pcm16_mono(chunk, n);
+    }
+    // Let the DMA drain (six 10 ms descriptors) before the amp goes off.
+    vTaskDelay(pdMS_TO_TICKS(70));
+    if (!comma_voice_active()) {
+        board_audio_set_speaker_enabled(false);
+    }
+    return err;
 }

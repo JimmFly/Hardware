@@ -13,11 +13,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "board_audio.h"
 #include "connector.h"
 #include "device_config.h"
 #include "display.h"
 #include "memory_caps.h"
 #include "provisioning.h"
+#include "speaker_volume.h"
 #include "ui_view.h"
 #include "wifi.h"
 #include "wifi_switch.h"
@@ -59,6 +61,7 @@ typedef enum {
     PAGE_JOINING,
     PAGE_JOINED,
     PAGE_BLUETOOTH,
+    PAGE_VOLUME,
 } page_t;
 
 typedef enum { KB_LOWER, KB_UPPER, KB_SYMBOLS } keyboard_t;
@@ -85,6 +88,9 @@ typedef enum {
     HIT_CANCEL,
     HIT_PAIR,
     HIT_OK,
+    HIT_VOLUME,
+    HIT_VOLUME_DOWN,
+    HIT_VOLUME_UP,
 } hit_id_t;
 
 typedef struct {
@@ -261,6 +267,7 @@ static void back(void)
         break;
     case PAGE_WIFI:
     case PAGE_BLUETOOTH:
+    case PAGE_VOLUME:
         go(PAGE_MAIN);
         break;
     case PAGE_NETWORKS:
@@ -367,6 +374,18 @@ static void scroll(int rows)
     }
 }
 
+// One step, stored at once, then a beep at the new level (the settings are not offered during a
+// call, so the speaker is free).
+static void change_volume(int step)
+{
+    const int level = board_audio_volume() + step;
+    if (level < SPEAKER_VOLUME_MIN || level > SPEAKER_VOLUME_MAX) {
+        return;
+    }
+    board_audio_set_volume(level);
+    board_audio_preview_volume();
+}
+
 static void on_hit(const hit_t *hit, int64_t now)
 {
     switch ((hit_id_t)hit->id) {
@@ -376,6 +395,13 @@ static void on_hit(const hit_t *hit, int64_t now)
         break;
     case HIT_BLUETOOTH:
         go(PAGE_BLUETOOTH);
+        break;
+    case HIT_VOLUME:
+        go(PAGE_VOLUME);
+        break;
+    case HIT_VOLUME_DOWN:
+    case HIT_VOLUME_UP:
+        change_volume(hit->id == HIT_VOLUME_UP ? 1 : -1);
         break;
     case HIT_DONE:
         close_to_logo();
@@ -524,9 +550,9 @@ static void draw_main(void)
     char line[64];
     label(40, 52, L_TITLE, UI_VIEW_FONT_SMALL, "Settings");
 
-    add(58, 104, 350, 100, L_BOX, 0, 0, 0, 28, NULL);
-    target(58, 104, 350, 100, HIT_WIFI, 0);
-    add(58, 112, 350, 48, 0, L_TEXT, UI_VIEW_FONT_SMALL, UI_VIEW_CENTER, 0, "Wi-Fi");
+    add(58, 96, 350, 84, L_BOX, 0, 0, 0, 28, NULL);
+    target(58, 96, 350, 84, HIT_WIFI, 0);
+    add(58, 98, 350, 44, 0, L_TEXT, UI_VIEW_FONT_SMALL, UI_VIEW_CENTER, 0, "Wi-Fi");
     if (wifi_is_off()) {
         snprintf(line, sizeof(line), "Off");
     } else if (joining()) {
@@ -536,15 +562,20 @@ static void draw_main(void)
     } else {
         snprintf(line, sizeof(line), "Connecting to %s", S->stored);
     }
-    add(58, 160, 350, 36, 0, L_DIM, UI_VIEW_FONT_MENU, UI_VIEW_CENTER, 0, line);
+    add(58, 140, 350, 34, 0, L_DIM, UI_VIEW_FONT_MENU, UI_VIEW_CENTER, 0, line);
 
-    add(58, 214, 350, 100, L_BOX, 0, 0, 0, 28, NULL);
-    target(58, 214, 350, 100, HIT_BLUETOOTH, 0);
-    add(58, 222, 350, 48, 0, L_TEXT, UI_VIEW_FONT_SMALL, UI_VIEW_CENTER, 0, "Bluetooth");
-    add(58, 270, 350, 36, 0, L_DIM, UI_VIEW_FONT_MENU, UI_VIEW_CENTER, 0, "Off until pairing mode");
+    add(58, 188, 350, 84, L_BOX, 0, 0, 0, 28, NULL);
+    target(58, 188, 350, 84, HIT_BLUETOOTH, 0);
+    add(58, 190, 350, 44, 0, L_TEXT, UI_VIEW_FONT_SMALL, UI_VIEW_CENTER, 0, "Bluetooth");
+    add(58, 232, 350, 34, 0, L_DIM, UI_VIEW_FONT_MENU, UI_VIEW_CENTER, 0, "Off until pairing mode");
 
-    label(322, 40, L_DIM, UI_VIEW_FONT_MENU, connector_online() ? "Comma online" : "Comma offline");
-    button(153, 372, 160, 56, L_BUTTON, "Done", HIT_DONE, 0);
+    add(58, 280, 350, 56, L_BOX, 0, 0, 0, 28, NULL);
+    target(58, 280, 350, 56, HIT_VOLUME, 0);
+    snprintf(line, sizeof(line), "Volume  %d", board_audio_volume());
+    add(58, 284, 350, 48, 0, L_TEXT, UI_VIEW_FONT_SMALL, UI_VIEW_CENTER, 0, line);
+
+    label(342, 32, L_DIM, UI_VIEW_FONT_MENU, connector_online() ? "Comma online" : "Comma offline");
+    button(153, 380, 160, 50, L_BUTTON, "Done", HIT_DONE, 0);
 }
 
 static void draw_wifi(int64_t now)
@@ -775,6 +806,46 @@ static void draw_bluetooth(void)
     button(153, 380, 160, 56, L_BUTTON, "Back", HIT_BACK, 0);
 }
 
+static void draw_volume(void)
+{
+    const int level = board_audio_volume();
+    const speaker_volume_t gain = speaker_volume_gain(level);
+    char line[32];
+    label(40, 52, L_TITLE, UI_VIEW_FONT_SMALL, "Volume");
+
+    add(58, 100, 350, 112, L_BOX, 0, 0, 0, 28, NULL);
+    snprintf(line, sizeof(line), "%d of %d", level, SPEAKER_VOLUME_MAX);
+    add(58, 108, 350, 48, 0, L_TEXT, UI_VIEW_FONT_SMALL, UI_VIEW_CENTER, 0, line);
+    if (gain.boost_db > 0) {
+        snprintf(line, sizeof(line), "Boost +%d dB, may distort", gain.boost_db);
+    } else if (level == SPEAKER_VOLUME_CLEAN_MAX) {
+        snprintf(line, sizeof(line), "Loudest without boost");
+    } else {
+        snprintf(line, sizeof(line), "%d dB", gain.dac_db);
+    }
+    add(58, 160, 350, 34, 0, L_DIM, UI_VIEW_FONT_MENU, UI_VIEW_CENTER, 0, line);
+
+    // One segment per level; the boost levels are set apart by a brighter fill.
+    for (int i = 0; i < SPEAKER_VOLUME_MAX; ++i) {
+        const bool on = i < level;
+        const uint8_t fill = !on ? L_BOX : i >= SPEAKER_VOLUME_CLEAN_MAX ? L_TEXT : L_TITLE;
+        add(84 + i * 30, 224, 26, 24, fill, 0, 0, 0, 6, NULL);
+    }
+
+    if (level > SPEAKER_VOLUME_MIN) {
+        button(73, 262, 150, 64, L_BUTTON, "-", HIT_VOLUME_DOWN, 0);
+    } else {
+        add(73, 262, 150, 64, L_BOX, L_DIM, UI_VIEW_FONT_MENU, UI_VIEW_CENTER, 32, "-");
+    }
+    if (level < SPEAKER_VOLUME_MAX) {
+        button(243, 262, 150, 64, L_BUTTON, "+", HIT_VOLUME_UP, 0);
+    } else {
+        add(243, 262, 150, 64, L_BOX, L_DIM, UI_VIEW_FONT_MENU, UI_VIEW_CENTER, 32, "+");
+    }
+    label(334, 32, L_DIM, UI_VIEW_FONT_MENU, "A beep plays at each step");
+    button(153, 380, 160, 50, L_BUTTON, "Back", HIT_BACK, 0);
+}
+
 static void build(int64_t now)
 {
     memset(&S->view, 0, sizeof(S->view));
@@ -787,6 +858,7 @@ static void build(int64_t now)
     case PAGE_JOINING: draw_joining(); break;
     case PAGE_JOINED: draw_joined(); break;
     case PAGE_BLUETOOTH: draw_bluetooth(); break;
+    case PAGE_VOLUME: draw_volume(); break;
     }
 }
 

@@ -68,8 +68,12 @@ The 1.43C's on-screen settings show the Wi-Fi network, its signal and whether Co
 scan for networks and switch to another one with a password typed on the screen, keeping the Comma
 setup (no new pairing); a network that does not connect within 45 s is given up and the previous one
 rejoined. They also turn Wi-Fi off until it is turned on again or the board restarts, and start
-pairing mode, the only time Bluetooth runs. BOOT, short, goes back a page. The same switch runs from
-a computer over USB with `firmware/tools/serial_wifi.py` (see [Development](docs/development.md)).
+pairing mode, the only time Bluetooth runs. The Volume page sets the speaker level from 1 to 10 in
+3 dB steps, with a beep at each step; it is stored and kept across restarts. Up to 8 the codec does
+the work without clipping; 9 and 10 add +3 and +6 dB in front of the speaker limiter, louder but with
+the loudest peaks compressed. BOOT, short, goes back a page. The same Wi-Fi switch and the volume
+run from a computer over USB with `firmware/tools/serial_wifi.py` (see
+[Development](docs/development.md)).
 
 ## Documentation
 

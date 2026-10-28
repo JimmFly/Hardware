@@ -9,8 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "board_audio.h"
 #include "connector.h"
 #include "device_config.h"
+#include "speaker_volume.h"
 #include "wifi.h"
 #include "wifi_switch.h"
 
@@ -24,13 +26,14 @@
 
 static const char *TAG = "console";
 
-typedef enum { REQ_NONE = 0, REQ_JOIN, REQ_STATUS } request_t;
+typedef enum { REQ_NONE = 0, REQ_JOIN, REQ_STATUS, REQ_VOLUME } request_t;
 
 // Written by the reader task while s_request is REQ_NONE, read and cleared by the UI task.
 static atomic_int s_request = REQ_NONE;
 static char s_ssid[33];
 static char s_password[65];
 static bool s_watching;  // a switch started from here, not yet reported
+static int s_volume_request;  // REQ_VOLUME: the level to set, or 0 to report it
 
 static void wipe(void *p, size_t n)
 {
@@ -69,8 +72,28 @@ static void handle_line(char *line)
 {
     static const char JOIN[] = "comma wifi join ";
     static const char STATUS[] = "comma wifi status";
+    static const char VOLUME[] = "comma volume";
     if (strcmp(line, STATUS) == 0) {
         if (s_request == REQ_NONE) s_request = REQ_STATUS;
+        return;
+    }
+    if (strncmp(line, VOLUME, sizeof(VOLUME) - 1) == 0) {
+        const char *arg = line + sizeof(VOLUME) - 1;
+        int level = 0;
+        if (*arg == ' ') {
+            char *end = NULL;
+            level = (int)strtol(arg + 1, &end, 10);
+            if (end == arg + 1 || *end || level < SPEAKER_VOLUME_MIN || level > SPEAKER_VOLUME_MAX) {
+                ESP_LOGW(TAG, "volume refused: expected %d-%d", SPEAKER_VOLUME_MIN, SPEAKER_VOLUME_MAX);
+                return;
+            }
+        } else if (*arg) {
+            return;
+        }
+        if (s_request == REQ_NONE) {
+            s_volume_request = level;
+            s_request = REQ_VOLUME;
+        }
         return;
     }
     if (strncmp(line, JOIN, sizeof(JOIN) - 1) != 0) {
@@ -138,7 +161,7 @@ void serial_console_start(void)
         ESP_LOGE(TAG, "console task create failed");
         return;
     }
-    ESP_LOGI(TAG, "ready: comma wifi status | comma wifi join <ssid hex> [<password hex>]");
+    ESP_LOGI(TAG, "ready: comma wifi status | comma wifi join <ssid hex> [<password hex>] | comma volume [1-10]");
 }
 
 // Eight hex digits of SHA-256 over the Comma credentials: shows whether they changed, reveals nothing.
@@ -187,6 +210,15 @@ void serial_console_poll(void)
     const request_t request = (request_t)s_request;
     if (request == REQ_STATUS) {
         report_status();
+        s_request = REQ_NONE;
+    } else if (request == REQ_VOLUME) {
+        if (s_volume_request) {
+            board_audio_set_volume(s_volume_request);
+            board_audio_preview_volume();  // refused during a call, where the new level is heard
+        }
+        const speaker_volume_t gain = speaker_volume_gain(board_audio_volume());
+        ESP_LOGI(TAG, "volume level=%d dac=%d dB boost=+%d dB (clean up to %d, max %d)", board_audio_volume(),
+                 gain.dac_db, gain.boost_db, SPEAKER_VOLUME_CLEAN_MAX, SPEAKER_VOLUME_MAX);
         s_request = REQ_NONE;
     } else if (request == REQ_JOIN) {
         char fingerprint[12];

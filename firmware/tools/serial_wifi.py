@@ -10,6 +10,8 @@ read from stdin, so it never appears in a command line, is never echoed, and is 
       python firmware/tools/serial_wifi.py --port /dev/cu.usbmodem101 join NETWORK
   python firmware/tools/serial_wifi.py --port /dev/cu.usbmodem101 join OPEN_NETWORK --open
   python firmware/tools/serial_wifi.py --port /dev/cu.usbmodem101 status
+  python firmware/tools/serial_wifi.py --port /dev/cu.usbmodem101 volume      # show the speaker level
+  python firmware/tools/serial_wifi.py --port /dev/cu.usbmodem101 volume 9    # set it (1-10), with a beep
 
 Opening the port does not reset the board. Needs pyserial. Close any other serial monitor first.
 """
@@ -20,7 +22,7 @@ import time
 
 import serial
 
-SHOWN = (" console: ", " wifi: ", " wifi_switch: ", " connector: connected", " connector: closed")
+SHOWN = (" console: ", " audio: speaker volume", " wifi: ", " wifi_switch: ", " connector: connected", " connector: closed")
 
 
 def open_port(name):
@@ -64,6 +66,8 @@ def main():
     join.add_argument("ssid")
     join.add_argument("--open", action="store_true", help="a network without a password")
     sub.add_parser("status", help="network, signal, Comma state and credential fingerprint")
+    volume = sub.add_parser("volume", help="show or set the speaker volume (1-10; above 8 boosts)")
+    volume.add_argument("level", nargs="?", type=int, choices=range(1, 11), metavar="LEVEL")
     args = parser.parse_args()
 
     log = open(args.log, "a") if args.log else None
@@ -71,6 +75,10 @@ def main():
     try:
         if args.command == "status":
             ok = run(port, b"comma wifi status\n", lambda t: "wifi-status " in t, 10, log)
+            return 0 if ok else 1
+        if args.command == "volume":
+            line = b"comma volume" + (b" %d" % args.level if args.level else b"")
+            ok = run(port, line + b"\n", lambda t: "volume level=" in t or "volume refused" in t, 10, log)
             return 0 if ok else 1
         ssid = args.ssid.encode()
         password = b"" if args.open else sys.stdin.buffer.readline().rstrip(b"\r\n")

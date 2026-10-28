@@ -28,6 +28,7 @@ sh firmware/tools/mic_path_test/run.sh
 sh firmware/tools/device_config_test/run.sh
 sh firmware/tools/call_ui_test/run.sh
 sh firmware/tools/wifi_switch_test/run.sh
+sh firmware/tools/wifi_scan_test/run.sh
 # The DevKit's smaller limits:
 sh firmware/tools/lan_http_test/run.sh --devkit
 sh firmware/tools/lan_udp_test/run.sh --devkit
